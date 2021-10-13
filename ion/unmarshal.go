@@ -25,6 +25,11 @@ import (
 	"strings"
 )
 
+// Unmarshaler is the interface implemented by types that can unmarshal themselves from Ion.
+type Unmarshaler interface {
+	UnmarshalIon([]byte) error
+}
+
 var (
 	// ErrNoInput is returned when there is no input to decode
 	ErrNoInput = errors.New("ion: no input to decode")
@@ -289,6 +294,8 @@ func (d *Decoder) DecodeTo(v interface{}) error {
 	return d.decodeTo(rv)
 }
 
+var unmarshalerType = reflect.TypeOf((*Unmarshaler)(nil)).Elem()
+
 func (d *Decoder) decodeTo(v reflect.Value) error {
 	if !v.IsValid() {
 		// Don't actually have anywhere to put this value; skip it.
@@ -303,6 +310,14 @@ func (d *Decoder) decodeTo(v reflect.Value) error {
 			return d.attachAnnotations(v)
 		}
 		return nil
+	}
+
+	t := v.Type()
+	if t.Kind() != reflect.Ptr && v.CanAddr() && reflect.PtrTo(t).Implements(unmarshalerType) {
+		return v.Addr().Interface().(Unmarshaler).UnmarshalIon(v.Bytes())
+	}
+	if t.Implements(unmarshalerType) {
+		return v.Interface().(Unmarshaler).UnmarshalIon(v.Bytes())
 	}
 
 	switch d.r.Type() {
